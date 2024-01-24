@@ -2,17 +2,19 @@
 
 import requests
 import time
-from functools import lru_cache
+from cachetools import TTLCache
 
+# Create a TTLCache with a maximum size of 100 and a TTL (time-to-live) of 10 seconds
+url_cache = TTLCache(maxsize=100, ttl=10)
 
-# Dictionary to track URL accesses
-url_access_count = {}
-
-
-# Decorator to cache results and track URL accesses
+# Function to get the page content (decorated with cache_and_track)
 def cache_and_track(func):
-    @lru_cache(maxsize=100)
     def wrapper(url):
+        # Check if the URL is in the cache
+        if url in url_cache:
+            # Return the cached result
+            return url_cache[url]
+
         # Make the request to the URL and fetch the content
         response = requests.get(url)
         page_content = response.text
@@ -20,18 +22,19 @@ def cache_and_track(func):
         # Update the URL access count
         url_access_count[url] = url_access_count.get(url, 0) + 1
 
+        # Cache the result with a TTL of 10 seconds
+        url_cache[url] = page_content
+
         time.sleep(10)  # Simulate slow response
 
         return page_content
 
     return wrapper
 
-
 # Function to get the page content (decorated with cache_and_track)
 @cache_and_track
 def get_page(url: str) -> str:
     return url
-
 
 # Example usage
 if __name__ == "__main__":
