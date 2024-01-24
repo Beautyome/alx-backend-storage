@@ -1,45 +1,36 @@
 #!/usr/bin/env python3
-
+"""
+web cache and tracker
+"""
 import requests
-import time
-from cachetools import TTLCache
+import redis
+from functools import wraps
 
-# Create a TTLCache with a maximum size of 100 and a TTL (time-to-live) of 10 seconds
-url_cache = TTLCache(maxsize=100, ttl=10)
+store = redis.Redis()
 
-# Function to get the page content (decorated with cache_and_track)
-def cache_and_track(func):
+
+def count_url_access(method):
+    """ Decorator counting how many times
+    a URL is accessed """
+    @wraps(method)
     def wrapper(url):
-        # Check if the URL is in the cache
-        if url in url_cache:
-            # Return the cached result
-            return url_cache[url]
+        cached_key = "cached:" + url
+        cached_data = store.get(cached_key)
+        if cached_data:
+            return cached_data.decode("utf-8")
 
-        # Make the request to the URL and fetch the content
-        response = requests.get(url)
-        page_content = response.text
+        count_key = "count:" + url
+        html = method(url)
 
-        # Update the URL access count
-        url_access_count[url] = url_access_count.get(url, 0) + 1
-
-        # Cache the result with a TTL of 10 seconds
-        url_cache[url] = page_content
-
-        time.sleep(10)  # Simulate slow response
-
-        return page_content
-
+        store.incr(count_key)
+        store.set(cached_key, html)
+        store.expire(cached_key, 10)
+        return html
     return wrapper
 
-# Function to get the page content (decorated with cache_and_track)
-@cache_and_track
-def get_page(url: str) -> str:
-    return url
 
-# Example usage
-if __name__ == "__main__":
-    url_ = "http://slowwly.robertomurray.co.uk/delay/1000/url/"
-    url = f"{url_}http://www.google.com"
-    print(get_page(url))
-    print(get_page(url))
-    print(f"Access count for {url}: {url_access_count[url]}")
+@count_url_access
+def get_page(url: str) -> str:
+    """ Returns HTML content of a url """
+    res = requests.get(url)
+    return res.text
