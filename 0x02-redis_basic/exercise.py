@@ -65,15 +65,17 @@ class Cache:
         return self.get(key, int)
 
     def replay(self, method: Callable) -> None:
-        """ Displays the history of calls of a particular function """
-        inputs_key = method.__qualname__ + ":inputs"
-        outputs_key = method.__qualname__ + ":outputs"
-        inputs = self._redis.lrange(inputs_key, 0, -1)
-        outputs = self._redis.lrange(outputs_key, 0, -1)
+    """ Displays the history of calls of a particular function """
+    inputs_key = method.__qualname__ + ":inputs"
+    outputs_key = method.__qualname__ + ":outputs"
+    inputs = self._redis.lrange(inputs_key, 0, -1)
+    outputs = self._redis.lrange(outputs_key, 0, -1)
 
-        print(f"{method.__qualname__} was called {len(inputs)} times:")
-        for input_args, output in zip(inputs, outputs):
-            print(f"{method}(*{input_args.decode('utf-8')}) -> {output.decode('utf-8')}")
+    print(f"{method.__qualname__} was called {len(inputs)} times:")
+    for input_args, output in zip(inputs, outputs):
+        input_str = input_args.decode('utf-8')
+        args = eval(input_str)  # Safely evaluate the string to get the tuple
+        print(f"{method.__qualname__}(*{args}) -> {output.decode('utf-8')}")
 
 if __name__ == "__main__":
     # Example Usage
