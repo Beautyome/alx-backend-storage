@@ -68,7 +68,7 @@ class Cache:
         """ Get an int """
         return self.get(key, int)
 
-def replay(cache: "Cache"):
+    def replay(cache: "Cache"):
     """
     Display the history of calls of a particular function
     """
