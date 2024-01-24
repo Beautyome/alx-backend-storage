@@ -1,40 +1,36 @@
-mport functools
-import time
+#!/usr/bin/env python3
+"""
+web cache and tracker
+"""
 import requests
-from requests.exceptions import RequestException
+import redis
+from functools import wraps
 
-def cache_result(expiration_time=10):
-    cache = {}
+store = redis.Redis()
 
-    def decorator(func):
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            url = args[0]
-            if url not in cache or time.time() - cache[url]['timestamp'] > expiration_time:
-                cache[url] = {'timestamp': time.time(), 'result': func(*args, **kwargs)}
-            elif 'result' not in cache[url]:
-                cache[url]['result'] = func(*args, **kwargs)
-            print(f"URL '{url}' accessed {cache[url]['count']} times.")
-            cache[url]['count'] += 1
-            return cache[url]['result']
 
-        return wrapper
+def count_url_access(method):
+    """ Decorator counting how many times
+    a URL is accessed """
+    @wraps(method)
+    def wrapper(url):
+        cached_key = "cached:" + url
+        cached_data = store.get(cached_key)
+        if cached_data:
+            return cached_data.decode("utf-8")
 
-    return decorator
+        count_key = "count:" + url
+        html = method(url)
 
-@cache_result()
+        store.incr(count_key)
+        store.set(cached_key, html)
+        store.expire(cached_key, 10)
+        return html
+    return wrapper
+
+
+@count_url_access
 def get_page(url: str) -> str:
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
-        return response.text
-    except RequestException as e:
-        print(f"Error while fetching URL '{url}': {e}")
-        return ""
-
-if __name__ == "__main__":
-    url = "http://slowwly.robertomurray.co.uk/delay/5000/url/http%3A%2F%2Fexample.com"
-    print(get_page(url))
-    print(get_page(url))
-    time.sleep(11)
-    print(get_page(url))
+    """ Returns HTML content of a url """
+    res = requests.get(url)
+    return res.text
