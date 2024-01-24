@@ -4,6 +4,7 @@ import redis
 from uuid import uuid4
 from typing import Union, Callable, Optional
 from functools import wraps
+from typing import List, Tuple
 
 UnionOfTypes = Union[str, bytes, int, float]
 
@@ -16,6 +17,7 @@ def count_calls(method: Callable) -> Callable:
         """ Wrapper function for count_calls method """
         self._redis.incr(key)
         return method(self, *args, **kwds)
+
     return wrapper
 
 def call_history(method: Callable) -> Callable:
@@ -24,12 +26,13 @@ def call_history(method: Callable) -> Callable:
     output_list = method.__qualname__ + ":outputs"
 
     @wraps(method)
-    def wrapper(self, *args) -> bytes:
+    def wrapper(self, *args) -> UnionOfTypes:
         """ Wrapper function for call_history method """
         self._redis.rpush(input_list, str(args))
         output = method(self, *args)
         self._redis.rpush(output_list, output)
         return output
+
     return wrapper
 
 class Cache:
@@ -43,20 +46,13 @@ class Cache:
     @count_calls
     @call_history
     def store(self, data: UnionOfTypes) -> str:
-        """
-        Method takes a data argument and returns a string
-        Generate a random key (e.g. using uuid), store the input data in Redis
-        using the random key and return the key
-        """
+        """ Method to store data in Redis and return a key """
         key = str(uuid4())
-        self._redis.set(key, data)
+        self._redis.mset({key: data})
         return key
 
     def get(self, key: str, fn: Optional[Callable] = None) -> UnionOfTypes:
-        """
-        Retrieves data stored at a key
-        converts the data back to the desired format
-        """
+        """ Retrieves data stored at a key and converts it back to the desired format """
         data = self._redis.get(key)
         return fn(data) if fn else data
 
@@ -68,14 +64,23 @@ class Cache:
         """ Get an int """
         return self.get(key, int)
 
-    def replay(cache: "Cache"):
-    """
-    Display the history of calls of a particular function
-    """
-    method_name = cache.store.__qualname__
-    inputs = cache._redis.lrange(f"{method_name}:inputs", 0, -1)
-    outputs = cache._redis.lrange(f"{method_name}:outputs", 0, -1)
+    def replay(self, method: Callable) -> None:
+        """ Displays the history of calls of a particular function """
+        inputs_key = method.__qualname__ + ":inputs"
+        outputs_key = method.__qualname__ + ":outputs"
+        inputs = self._redis.lrange(inputs_key, 0, -1)
+        outputs = self._redis.lrange(outputs_key, 0, -1)
 
-    print(f"{method_name} was called {len(inputs)} times:")
-    for inp, out in zip(inputs, outputs):
-        print(f"{method_name}(*{inp.decode('utf-8')}) -> {out.decode('utf-8')}")
+        print(f"{method.__qualname__} was called {len(inputs)} times:")
+        for input_args, output in zip(inputs, outputs):
+            print(f"{method}(*{input_args.decode('utf-8')}) -> {output.decode('utf-8')}")
+
+if __name__ == "__main__":
+    # Example Usage
+    cache = Cache()
+    foo_key = cache.store("foo")
+    bar_key = cache.store("bar")
+    int_key = cache.store(42)
+
+    # Displaying history using replay
+    cache.replay(cache.store)
